@@ -72,7 +72,7 @@
             margin-top: 10px;
         }
         .user-list {
-            max-height: 200px;
+            max-height: 300px;
             overflow-y: auto;
             border: 1px solid #dddfe2;
             border-radius: 5px;
@@ -80,15 +80,55 @@
             margin-top: 5px;
         }
         .user-item {
-            padding: 5px;
+            padding: 10px;
             cursor: pointer;
             border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
         }
         .user-item:hover {
             background-color: #f0f2f5;
         }
         .user-item.selected {
             background-color: #e7f3ff;
+            border-left: 3px solid #1877f2;
+        }
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #1877f2;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .user-name {
+            font-weight: bold;
+        }
+        .user-email {
+            font-size: 12px;
+            color: #666;
+        }
+        .search-container {
+            margin-bottom: 15px;
+        }
+        .selected-user {
+            background-color: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            border-left: 3px solid #1877f2;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
         }
     </style>
 </head>
@@ -98,20 +138,26 @@
         <form id="createChatForm">
             <div class="form-group">
                 <label for="chatName">Tên đoạn chat:</label>
-                <input type="text" id="chatName" required>
+                <input type="text" id="chatName" placeholder="Nhập tên đoạn chat..." required>
             </div>
+            
             <div class="form-group">
-                <label for="userSearch">Tìm kiếm người dùng:</label>
-                <input type="text" id="userSearch" placeholder="Nhập tên hoặc email...">
+                <label>Chọn người dùng để trò chuyện:</label>
+                <div class="search-container">
+                    <input type="text" id="userSearch" placeholder="Tìm kiếm người dùng theo tên hoặc email...">
+                </div>
+                <div id="userList" class="user-list">
+                    <div class="loading" id="loadingUsers">Đang tải danh sách người dùng...</div>
+                </div>
             </div>
-            <div class="form-group">
-                <label>Chọn người dùng:</label>
-                <div id="userList" class="user-list"></div>
-            </div>
-            <div class="form-group">
+            
+            <div class="form-group" id="selectedUserContainer" style="display: none;">
                 <label>Người dùng đã chọn:</label>
-                <div id="selectedUsers" class="user-list"></div>
+                <div id="selectedUser" class="selected-user">
+                    <!-- Người dùng đã chọn sẽ hiển thị ở đây -->
+                </div>
             </div>
+            
             <button type="submit">Tạo Đoạn Chat</button>
         </form>
         <div class="link">
@@ -144,83 +190,137 @@
 
         let currentUser = null;
         let allUsers = [];
-        let selectedUsers = [];
+        let selectedUser = null;
 
         // Check authentication
         auth.onAuthStateChanged((user) => {
             if (user) {
                 currentUser = user;
+                console.log("Người dùng hiện tại:", user.uid);
                 loadUsers();
             } else {
+                console.log("Chưa đăng nhập, chuyển hướng...");
                 window.location.href = 'login.html';
             }
         });
 
-        // Load all users
+        // Load all users from Firestore
         function loadUsers() {
+            console.log("Bắt đầu tải danh sách người dùng...");
+            
             db.collection('users').get().then((querySnapshot) => {
+                console.log("Số lượng người dùng tìm thấy:", querySnapshot.size);
+                
                 allUsers = [];
                 querySnapshot.forEach((doc) => {
+                    const userData = doc.data();
+                    console.log("Người dùng:", doc.id, userData);
+                    
+                    // Loại bỏ người dùng hiện tại khỏi danh sách
                     if (doc.id !== currentUser.uid) {
                         allUsers.push({
                             id: doc.id,
-                            ...doc.data()
+                            displayName: userData.displayName || 'Người dùng',
+                            email: userData.email || 'Không có email'
                         });
                     }
                 });
+                
+                console.log("Danh sách người dùng sau khi lọc:", allUsers);
                 displayUsers(allUsers);
+                
+            }).catch((error) => {
+                console.error("Lỗi khi tải người dùng:", error);
+                document.getElementById('userList').innerHTML = '<div class="error">Lỗi khi tải danh sách người dùng: ' + error.message + '</div>';
             });
         }
 
         // Display users in the list
         function displayUsers(users) {
             const userList = document.getElementById('userList');
+            
+            if (users.length === 0) {
+                userList.innerHTML = '<div class="loading">Không tìm thấy người dùng nào</div>';
+                return;
+            }
+            
             userList.innerHTML = '';
             
             users.forEach(user => {
                 const userItem = document.createElement('div');
                 userItem.className = 'user-item';
-                userItem.textContent = `${user.displayName} (${user.email})`;
-                userItem.dataset.userId = user.id;
+                if (selectedUser && selectedUser.id === user.id) {
+                    userItem.classList.add('selected');
+                }
+                
+                const userAvatar = document.createElement('div');
+                userAvatar.className = 'user-avatar';
+                userAvatar.textContent = user.displayName.charAt(0).toUpperCase();
+                
+                const userInfo = document.createElement('div');
+                userInfo.className = 'user-info';
+                
+                const userName = document.createElement('div');
+                userName.className = 'user-name';
+                userName.textContent = user.displayName;
+                
+                const userEmail = document.createElement('div');
+                userEmail.className = 'user-email';
+                userEmail.textContent = user.email;
+                
+                userInfo.appendChild(userName);
+                userInfo.appendChild(userEmail);
+                
+                userItem.appendChild(userAvatar);
+                userItem.appendChild(userInfo);
                 
                 userItem.addEventListener('click', () => {
-                    if (!selectedUsers.find(u => u.id === user.id)) {
-                        selectedUsers.push(user);
-                        updateSelectedUsers();
-                    }
+                    selectUser(user);
                 });
                 
                 userList.appendChild(userItem);
             });
         }
 
-        // Update selected users display
-        function updateSelectedUsers() {
-            const selectedUsersDiv = document.getElementById('selectedUsers');
-            selectedUsersDiv.innerHTML = '';
+        // Select a user
+        function selectUser(user) {
+            selectedUser = user;
+            updateSelectedUserDisplay();
+            displayUsers(allUsers); // Refresh the list to show selected state
+        }
+
+        // Update selected user display
+        function updateSelectedUserDisplay() {
+            const selectedUserContainer = document.getElementById('selectedUserContainer');
+            const selectedUserDiv = document.getElementById('selectedUser');
             
-            selectedUsers.forEach(user => {
-                const userItem = document.createElement('div');
-                userItem.className = 'user-item';
-                userItem.textContent = `${user.displayName} (${user.email})`;
+            if (selectedUser) {
+                selectedUserContainer.style.display = 'block';
+                selectedUserDiv.innerHTML = `
+                    <div style="display: flex; align-items: center;">
+                        <div class="user-avatar">${selectedUser.displayName.charAt(0).toUpperCase()}</div>
+                        <div>
+                            <div class="user-name">${selectedUser.displayName}</div>
+                            <div class="user-email">${selectedUser.email}</div>
+                        </div>
+                        <button type="button" id="removeSelectedUser" style="margin-left: auto; background: red; color: white; border: none; border-radius: 3px; padding: 5px 10px; cursor: pointer;">X</button>
+                    </div>
+                `;
                 
-                const removeBtn = document.createElement('button');
-                removeBtn.textContent = 'X';
-                removeBtn.style.cssText = 'background: red; color: white; border: none; border-radius: 3px; padding: 2px 5px; margin-left: 10px; cursor: pointer;';
-                removeBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    selectedUsers = selectedUsers.filter(u => u.id !== user.id);
-                    updateSelectedUsers();
+                document.getElementById('removeSelectedUser').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    selectedUser = null;
+                    selectedUserContainer.style.display = 'none';
+                    displayUsers(allUsers); // Refresh the list
                 });
-                
-                userItem.appendChild(removeBtn);
-                selectedUsersDiv.appendChild(userItem);
-            });
+            } else {
+                selectedUserContainer.style.display = 'none';
+            }
         }
 
         // Search users
         document.getElementById('userSearch').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
+            const searchTerm = e.target.value.toLowerCase().trim();
             if (searchTerm) {
                 const filteredUsers = allUsers.filter(user => 
                     user.displayName.toLowerCase().includes(searchTerm) || 
@@ -236,38 +336,89 @@
         document.getElementById('createChatForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            const chatName = document.getElementById('chatName').value;
+            const chatName = document.getElementById('chatName').value.trim();
             
-            if (selectedUsers.length === 0) {
-                document.getElementById('message').textContent = 'Vui lòng chọn ít nhất một người dùng';
+            if (!selectedUser) {
+                document.getElementById('message').textContent = 'Vui lòng chọn một người dùng để trò chuyện';
                 document.getElementById('message').className = 'error';
                 return;
             }
             
-            // Create participants array (current user + selected users)
-            const participants = [currentUser.uid, ...selectedUsers.map(user => user.id)];
+            if (!chatName) {
+                document.getElementById('message').textContent = 'Vui lòng nhập tên đoạn chat';
+                document.getElementById('message').className = 'error';
+                return;
+            }
             
-            // Create chat in Firestore
-            db.collection('chats').add({
-                name: chatName,
-                participants: participants,
-                createdBy: currentUser.uid,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                lastMessage: '',
-                lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
+            // Create participants array (current user + selected user)
+            const participants = [currentUser.uid, selectedUser.id];
+            
+            // Kiểm tra xem đoạn chat đã tồn tại chưa
+            checkIfChatExists(participants).then((chatExists) => {
+                if (chatExists) {
+                    document.getElementById('message').textContent = 'Đoạn chat với người dùng này đã tồn tại';
+                    document.getElementById('message').className = 'error';
+                    return;
+                }
+                
+                // Tạo đoạn chat mới
+                return db.collection('chats').add({
+                    name: chatName,
+                    participants: participants,
+                    createdBy: currentUser.uid,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastMessage: '',
+                    lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
+                    participantNames: {
+                        [currentUser.uid]: currentUser.displayName || currentUser.email,
+                        [selectedUser.id]: selectedUser.displayName
+                    }
+                });
             })
-            .then(() => {
-                document.getElementById('message').textContent = 'Tạo đoạn chat thành công!';
-                document.getElementById('message').className = 'success';
-                document.getElementById('createChatForm').reset();
-                selectedUsers = [];
-                updateSelectedUsers();
+            .then((docRef) => {
+                if (docRef) {
+                    document.getElementById('message').textContent = 'Tạo đoạn chat thành công! Đang chuyển hướng...';
+                    document.getElementById('message').className = 'success';
+                    
+                    // Reset form
+                    document.getElementById('createChatForm').reset();
+                    selectedUser = null;
+                    updateSelectedUserDisplay();
+                    
+                    // Redirect to chatbox after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = 'chatbox.html';
+                    }, 2000);
+                }
             })
             .catch((error) => {
+                console.error('Lỗi khi tạo đoạn chat:', error);
                 document.getElementById('message').textContent = 'Lỗi: ' + error.message;
                 document.getElementById('message').className = 'error';
             });
         });
+
+        // Function to check if chat already exists
+        function checkIfChatExists(participants) {
+            return db.collection('chats')
+                .where('participants', 'array-contains', currentUser.uid)
+                .get()
+                .then((querySnapshot) => {
+                    let chatExists = false;
+                    querySnapshot.forEach((doc) => {
+                        const chat = doc.data();
+                        // Kiểm tra xem đoạn chat có chính xác 2 participants và bao gồm selectedUser không
+                        if (chat.participants.length === 2 && 
+                            chat.participants.includes(selectedUser.id)) {
+                            chatExists = true;
+                        }
+                    });
+                    return chatExists;
+                });
+        }
+
+        // Debug: Kiểm tra xem Firebase có khởi tạo đúng không
+        console.log("Firebase đã được khởi tạo với projectId:", firebaseConfig.projectId);
     </script>
 </body>
 </html>
