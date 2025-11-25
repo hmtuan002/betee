@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tạo Đoạn Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #1877f2;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dddfe2;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #166fe5;
+        }
+        .link {
+            text-align: center;
+            margin-top: 15px;
+        }
+        .link a {
+            color: #1877f2;
+            text-decoration: none;
+        }
+        .error {
+            color: red;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .success {
+            color: green;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .user-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #dddfe2;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 5px;
+        }
+        .user-item {
+            padding: 5px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        .user-item:hover {
+            background-color: #f0f2f5;
+        }
+        .user-item.selected {
+            background-color: #e7f3ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tạo Đoạn Chat</h1>
+        <form id="createChatForm">
+            <div class="form-group">
+                <label for="chatName">Tên đoạn chat:</label>
+                <input type="text" id="chatName" required>
+            </div>
+            <div class="form-group">
+                <label for="userSearch">Tìm kiếm người dùng:</label>
+                <input type="text" id="userSearch" placeholder="Nhập tên hoặc email...">
+            </div>
+            <div class="form-group">
+                <label>Chọn người dùng:</label>
+                <div id="userList" class="user-list"></div>
+            </div>
+            <div class="form-group">
+                <label>Người dùng đã chọn:</label>
+                <div id="selectedUsers" class="user-list"></div>
+            </div>
+            <button type="submit">Tạo Đoạn Chat</button>
+        </form>
+        <div class="link">
+            <a href="chatbox.html">Quay lại Chatbox</a>
+        </div>
+        <div id="message" class="error"></div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCq67Pm6oXQqC4hzShZyMW3XXuFdzuYeog",
+            authDomain: "blhd-ce0b8.firebaseapp.com",
+            projectId: "blhd-ce0b8",
+            storageBucket: "blhd-ce0b8.firebasestorage.app",
+            messagingSenderId: "1062247219518",
+            appId: "1:1062247219518:web:23e17dd2dd8698d46bac6f",
+            measurementId: "G-K7JLBH42RN"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentUser = null;
+        let allUsers = [];
+        let selectedUsers = [];
+
+        // Check authentication
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                currentUser = user;
+                loadUsers();
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+
+        // Load all users
+        function loadUsers() {
+            db.collection('users').get().then((querySnapshot) => {
+                allUsers = [];
+                querySnapshot.forEach((doc) => {
+                    if (doc.id !== currentUser.uid) {
+                        allUsers.push({
+                            id: doc.id,
+                            ...doc.data()
+                        });
+                    }
+                });
+                displayUsers(allUsers);
+            });
+        }
+
+        // Display users in the list
+        function displayUsers(users) {
+            const userList = document.getElementById('userList');
+            userList.innerHTML = '';
+            
+            users.forEach(user => {
+                const userItem = document.createElement('div');
+                userItem.className = 'user-item';
+                userItem.textContent = `${user.displayName} (${user.email})`;
+                userItem.dataset.userId = user.id;
+                
+                userItem.addEventListener('click', () => {
+                    if (!selectedUsers.find(u => u.id === user.id)) {
+                        selectedUsers.push(user);
+                        updateSelectedUsers();
+                    }
+                });
+                
+                userList.appendChild(userItem);
+            });
+        }
+
+        // Update selected users display
+        function updateSelectedUsers() {
+            const selectedUsersDiv = document.getElementById('selectedUsers');
+            selectedUsersDiv.innerHTML = '';
+            
+            selectedUsers.forEach(user => {
+                const userItem = document.createElement('div');
+                userItem.className = 'user-item';
+                userItem.textContent = `${user.displayName} (${user.email})`;
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = 'X';
+                removeBtn.style.cssText = 'background: red; color: white; border: none; border-radius: 3px; padding: 2px 5px; margin-left: 10px; cursor: pointer;';
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    selectedUsers = selectedUsers.filter(u => u.id !== user.id);
+                    updateSelectedUsers();
+                });
+                
+                userItem.appendChild(removeBtn);
+                selectedUsersDiv.appendChild(userItem);
+            });
+        }
+
+        // Search users
+        document.getElementById('userSearch').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            if (searchTerm) {
+                const filteredUsers = allUsers.filter(user => 
+                    user.displayName.toLowerCase().includes(searchTerm) || 
+                    user.email.toLowerCase().includes(searchTerm)
+                );
+                displayUsers(filteredUsers);
+            } else {
+                displayUsers(allUsers);
+            }
+        });
+
+        // Create chat form handler
+        document.getElementById('createChatForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const chatName = document.getElementById('chatName').value;
+            
+            if (selectedUsers.length === 0) {
+                document.getElementById('message').textContent = 'Vui lòng chọn ít nhất một người dùng';
+                document.getElementById('message').className = 'error';
+                return;
+            }
+            
+            // Create participants array (current user + selected users)
+            const participants = [currentUser.uid, ...selectedUsers.map(user => user.id)];
+            
+            // Create chat in Firestore
+            db.collection('chats').add({
+                name: chatName,
+                participants: participants,
+                createdBy: currentUser.uid,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                lastMessage: '',
+                lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
+            })
+            .then(() => {
+                document.getElementById('message').textContent = 'Tạo đoạn chat thành công!';
+                document.getElementById('message').className = 'success';
+                document.getElementById('createChatForm').reset();
+                selectedUsers = [];
+                updateSelectedUsers();
+            })
+            .catch((error) => {
+                document.getElementById('message').textContent = 'Lỗi: ' + error.message;
+                document.getElementById('message').className = 'error';
+            });
+        });
+    </script>
+</body>
+</html>
